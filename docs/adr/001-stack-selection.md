@@ -1,12 +1,11 @@
 # ADR 001 - Selecting the MVP application stack
 
 - Status: Accepted
-- Date: 08/14/26
+- Date: 2026-08-14
 
 ## Context
 
-BridgeScope is a application where users are able to interact with a map of California and select each of the thousands bridges across the state
-using the Federal Highway Administation Nationaly Bridge Inventory (NBI). The tool catalogs plentiful information about bridges nationwide, but for the MVP, California is the only state being considered with bridge informaiton such as condition, year built, average daily traffic, etc.
+BridgeScope is a web application that allows users to search, sort, and inspect public bridge records for California. The MVP includes a bridge table, individual bridge detail pages, an Average Daily Traffic ranking, a backend API, and a relational database.
 
 ## Decision
 

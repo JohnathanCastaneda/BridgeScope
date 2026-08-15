@@ -5,9 +5,7 @@
 
 ## Context
 
-BridgeScope is a application where it uses bridge data and displays it to users who may be interested in knowing the information on bridges.
-To do so, it is important to acquire a authoritative California bridge dataset containing the information users would be interested in such as
-traffic, condition, construction, etc. Although the long-term for the application is to support nationwide data, the MVP is strictly California only.
+BridgeScope is a web application for exploring public bridge inventory data. The MVP requires an authoritative California dataset containing traffic, construction, ownership, location, and condition information. Although the long-term vision is nationwide coverage, the MVP supports California only.
 
 ## Decision
 
@@ -27,15 +25,13 @@ The full raw source file will not be committed to Git.
 
 ## Why this source was selected
 
-The FHWA 2025 California National Bridge Inventory highway-bridge comma-delimited export was selected because it was published by the Federal Highway
-Administration, contains the required MVP fields, and covers both state and local highway bridges. The FWHA also provides an annual inventory baseline
-which updates fields if necessary such as new bridges or bridge conditions changing throught the future.
+FHWA publishes annual NBI inventory snapshots. This gives the application a reproducible baseline and creates a possible path toward supporting later inventory years. Individual values may still have different measurement years, and FHWA may publish corrected revisions of an annual file.
 
 ## Alternatives considered
 
 ### California state-highway bridge dataset
 
-This dataset are split by ownership and does not provide the complete state bridge invenotry needed for the MVP.
+California publishes separate bridge datasets for different ownership categories. Using those sources would require combining multiple schemas and still might not provide all fields required by the MVP in one authoritative export.
 
 ### Combining multiple California datasets
  
