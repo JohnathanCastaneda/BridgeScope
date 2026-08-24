@@ -150,7 +150,9 @@ activemq-data/
 # Environments
 .env
 .envrc
+!.env.example
 .venv
+apps/api/.venv/
 env/
 venv/
 ENV/
@@ -216,3 +218,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node
+node_modules/
+apps/web/node_modules/
+apps/web/dist/
+
+# Raw datasets
+data/raw/*
+!data/raw/.gitkeep
+
+# Operating systems and editors
+.DS_Store
+.vscode/
+.idea/
