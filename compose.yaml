@@ -7,10 +7,10 @@ services:
     environment:
       POSTGRES_DB: bridgescope
       POSTGRES_USER: bridgescope
-      POSTGRES_PASSWORD: testpassword
+      POSTGRES_PASSWORD: bridgescope_dev
 
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
     volumes:
       - bridgescope_postgres_data:/var/lib/postgresql/data
