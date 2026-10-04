@@ -34,8 +34,8 @@ FHWA publishes annual NBI inventory snapshots. This gives the application a repr
 California publishes separate bridge datasets for different ownership categories. Using those sources would require combining multiple schemas and still might not provide all fields required by the MVP in one authoritative export.
 
 ### Combining multiple California datasets
- 
-Combing mulitple Califonria datasets would add uncessary complexity to the application.
+
+Combining multiple California datasets would add unnecessary complexity to the application.
 
 ## Risks
 

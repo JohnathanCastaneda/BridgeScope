@@ -12,7 +12,7 @@ The database must support:
 - Import execution history
 - Structured import warnings and errors
 - Bridge search, filtering, sorting, and pagination
-- Highest Average Daily Traffic rankings
+- Highest estimated Average Daily Traffic rankings
 
 The MVP stores one or more source dataset revisions, but the application will expose only the active California dataset.
 Historical comparison between annual datasets is outside the MVP scope.
@@ -103,8 +103,8 @@ structure_number is not globally unique and is therefore not used as the databas
 | `state_code` | `CHAR(2)` | No | NBI state code |
 | `structure_number` | `VARCHAR(15)` | No | Normalized bridge structure identifier |
 | `county_code` | `CHAR(3)` | No | County code associated with the bridge |
-| `facility_carried` | `TEXT` | No | Road or facility carried by the structure |
-| `feature_crossed` | `TEXT` | No | Feature intersected or crossed by the structure |
+| `facility_carried` | `TEXT` | Yes | Road or facility carried by the structure |
+| `feature_crossed` | `TEXT` | Yes | Feature intersected or crossed by the structure |
 | `latitude` | `NUMERIC(9,6)` | Yes | Normalized decimal latitude |
 | `longitude` | `NUMERIC(10,6)` | Yes | Normalized decimal longitude |
 | `source_latitude_code` | `CHAR(8)` | Yes | Original packed NBI latitude value |
@@ -332,7 +332,7 @@ UNIQUE (
 
 This supports bridge-detail lookup.
 
-### Highest ADT ranking
+### Highest estimated ADT ranking
 
 INDEX (
     dataset_id,
@@ -430,18 +430,20 @@ The cascade behavior primarily prevents orphan rows during development and autom
 
 # Deferred schema features
 The MVP intentionally excludes:
-- Nationwide-specific partitioning
+- Nationwide support
+- Maps and geospatial visualization
 - Separate bridge identity/history tables
 - PostGIS geometry columns
 - Material lookup tables
 - Owner lookup tables
 - Design-type lookup tables
-- Historical comparison tables
-- User/account tables
+- Historical comparison tables and year-to-year comparison workflows
+- User accounts and account-specific data
 - Favorite bridges
 - Comments
 - Search-specific tables
-- Analytics/event tables
+- Real-time traffic integrations
+- Advanced analytics and analytics/event tables
 - Multiple databases
 
 These should only be introduced after a concrete requirement justifies them.

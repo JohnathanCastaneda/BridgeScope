@@ -5,7 +5,7 @@ This document describes the relational database schema for the active California
 ```mermaid
 erDiagram
     BRIDGE_DATASETS ||--o{ BRIDGES : "contains"
-    BRIDGE_DATASETS ||--o{ IMPORT_RUNS : "imported_by"
+    BRIDGE_DATASETS |o--o{ IMPORT_RUNS : "associated_with"
     IMPORT_RUNS ||--o{ IMPORT_ISSUES : "produces"
 
     BRIDGE_DATASETS {
@@ -91,3 +91,4 @@ erDiagram
         jsonb raw_record
         timestamptz created_at
     }
+```

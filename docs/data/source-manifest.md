@@ -29,8 +29,8 @@
 - Delimiter: Comma 
 - Text qualifier: Single quote 
 - Header present: Yes 
-- Header column count: TBD
-- Character encoding: TBD
+- Header column count: 123
+- Character encoding: US-ASCII
 
 ## Storage policy 
 
