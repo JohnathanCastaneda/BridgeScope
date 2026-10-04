@@ -12,3 +12,22 @@ Frontend setup
 Frontend development command
 Frontend build command
 Data-file policy
+
+# PostgreSQL development database
+
+Start PostgreSQL:
+
+bash
+docker compose up -d
+
+Check its status
+- docker compose ps
+
+Stop PostgreSQL
+- docker compose down
+
+Reset the local database and remove its persistent volume
+- docker compose down -v
+
+Connect using psql
+- docker compose exec db psql -U bridgescope -d bridgescope
