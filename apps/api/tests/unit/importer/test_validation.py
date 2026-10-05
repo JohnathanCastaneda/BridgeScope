@@ -129,6 +129,12 @@ def test_future_year_built_is_error() -> None:
     assert result.issues[0].error_code == "YEAR_BUILT_AFTER_INVENTORY_YEAR"
 
 
+def test_year_built_inventory_year_boundary_is_valid() -> None:
+    assert issue_codes(
+        replace(valid_record(), year_built=2025, year_reconstructed=None)
+    ) == ()
+
+
 def test_year_built_before_minimum_is_error() -> None:
     assert issue_codes(replace(valid_record(), year_built=1799)) == (
         "YEAR_BUILT_BEFORE_MINIMUM",
@@ -146,6 +152,12 @@ def test_reconstruction_before_construction_is_warning() -> None:
     assert result.issues[0].error_code == "RECONSTRUCTION_BEFORE_CONSTRUCTION"
 
 
+def test_reconstruction_equal_to_construction_year_is_valid() -> None:
+    assert issue_codes(
+        replace(valid_record(), year_built=1995, year_reconstructed=1995)
+    ) == ()
+
+
 def test_reconstruction_after_inventory_year_is_warning() -> None:
     assert issue_codes(replace(valid_record(), year_reconstructed=2026)) == (
         "RECONSTRUCTION_AFTER_INVENTORY_YEAR",
@@ -160,6 +172,10 @@ def test_negative_adt_is_error() -> None:
 
     assert result.is_valid is False
     assert result.issues[0].error_code == "NEGATIVE_AVERAGE_DAILY_TRAFFIC"
+
+
+def test_zero_adt_is_valid() -> None:
+    assert issue_codes(replace(valid_record(), average_daily_traffic=0)) == ()
 
 
 def test_traffic_year_after_inventory_year_is_error() -> None:
@@ -325,6 +341,7 @@ def test_multiple_issues_are_collected_in_deterministic_order() -> None:
             year_reconstructed=None,
             average_daily_traffic=-1,
             truck_traffic_percent=Decimal("101"),
+            inspection_month=13,
             deck_condition_code="X",
         ),
         CONTEXT,
@@ -334,6 +351,7 @@ def test_multiple_issues_are_collected_in_deterministic_order() -> None:
         "YEAR_BUILT_AFTER_INVENTORY_YEAR",
         "NEGATIVE_AVERAGE_DAILY_TRAFFIC",
         "INVALID_TRUCK_TRAFFIC_PERCENT",
+        "INVALID_INSPECTION_MONTH",
         "INVALID_DECK_CONDITION_CODE",
     ]
     assert result.is_valid is False

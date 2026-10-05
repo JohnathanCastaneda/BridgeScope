@@ -52,6 +52,23 @@ def test_structure_number_preserves_internal_formatting() -> None:
     assert normalize_structure_number("  ABC 123  ") == "ABC 123"
 
 
+def test_structure_number_identity_variants_are_distinct() -> None:
+    variants = {
+        normalize_structure_number("000000000000021"),
+        normalize_structure_number("00000000000J003"),
+        normalize_structure_number("        06 0021"),
+        normalize_structure_number("06  0021"),
+        normalize_structure_number(" 06 0021 "),
+    }
+
+    assert variants == {
+        "000000000000021",
+        "00000000000J003",
+        "06 0021",
+        "06  0021",
+    }
+
+
 def test_county_code_pads_short_codes() -> None:
     assert normalize_county_code("1") == "001"
     assert normalize_county_code("89") == "089"
@@ -91,6 +108,11 @@ def test_adt_preserves_zero() -> None:
     assert normalize_adt("550000") == 550000
     assert normalize_adt("0") == 0
     assert normalize_adt("") is None
+
+
+def test_truck_percent_blank_and_zero_are_distinct() -> None:
+    assert normalize_optional_decimal("") is None
+    assert normalize_optional_decimal("0") == Decimal("0")
 
 
 def test_decimal_fields_use_decimal_not_float() -> None:
@@ -242,6 +264,42 @@ def test_complete_record_normalization_from_raw_record() -> None:
     assert normalized.culvert_condition_code == "N"
     assert normalized.overall_condition_code == "F"
     assert normalized.lowest_condition_rating == 5
+
+
+def test_complete_record_normalization_isolates_malformed_field() -> None:
+    raw = RawBridgeRecord(
+        row_number=9,
+        values={
+            "STATE_CODE_001": "06",
+            "STRUCTURE_NUMBER_008": "        06 0021",
+            "FACILITY_CARRIED_007": "Main Street",
+            "FEATURES_DESC_006A": "River",
+            "COUNTY_CODE_003": "089",
+            "LAT_016": "38153000",
+            "LONG_017": "121153000",
+            "YEAR_BUILT_027": "1941",
+            "YEAR_RECONSTRUCTED_106": "0",
+            "ADT_029": "ABC",
+            "YEAR_ADT_030": "0",
+            "PERCENT_ADT_TRUCK_109": "0",
+            "TRAFFIC_LANES_ON_028A": "4",
+            "STRUCTURE_LEN_MT_049": "1093.6",
+            "MAX_SPAN_LEN_MT_048": "0",
+            "OWNER_022": "01",
+            "STRUCTURE_KIND_043A": "3",
+            "STRUCTURE_TYPE_043B": "09",
+            "DATE_OF_INSPECT_090": "524",
+            "DECK_COND_058": "7",
+            "SUPERSTRUCTURE_COND_059": "7",
+            "SUBSTRUCTURE_COND_060": "6",
+            "CULVERT_COND_062": "N",
+            "BRIDGE_CONDITION": "F",
+            "LOWEST_RATING": "5",
+        },
+    )
+
+    with pytest.raises(NormalizationError, match="Cannot parse integer value"):
+        normalize_bridge_record(raw)
 
 
 def test_first_sample_record_normalizes_expected_fields() -> None:

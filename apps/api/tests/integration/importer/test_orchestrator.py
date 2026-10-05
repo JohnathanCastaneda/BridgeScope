@@ -1,9 +1,11 @@
 import csv
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 
 from bridgescope.db.models.bridge import Bridge
 from bridgescope.db.models.bridge_dataset import BridgeDataset
@@ -121,6 +123,53 @@ def table_count(model: type) -> int:
         return session.scalar(select(func.count()).select_from(model))
 
 
+def issue_count_by_severity(severity: str) -> int:
+    with SessionLocal() as session:
+        return session.scalar(
+            select(func.count())
+            .select_from(ImportIssue)
+            .where(ImportIssue.severity == severity)
+        )
+
+
+def clone_bridge(bridge: Bridge, **overrides) -> Bridge:
+    values = {
+        "dataset_id": bridge.dataset_id,
+        "state_code": bridge.state_code,
+        "structure_number": bridge.structure_number,
+        "county_code": bridge.county_code,
+        "facility_carried": bridge.facility_carried,
+        "feature_crossed": bridge.feature_crossed,
+        "latitude": bridge.latitude,
+        "longitude": bridge.longitude,
+        "source_latitude_code": bridge.source_latitude_code,
+        "source_longitude_code": bridge.source_longitude_code,
+        "year_built": bridge.year_built,
+        "year_reconstructed": bridge.year_reconstructed,
+        "average_daily_traffic": bridge.average_daily_traffic,
+        "traffic_year": bridge.traffic_year,
+        "truck_traffic_percent": bridge.truck_traffic_percent,
+        "lanes_on": bridge.lanes_on,
+        "bridge_length_m": bridge.bridge_length_m,
+        "maximum_span_m": bridge.maximum_span_m,
+        "owner_code": bridge.owner_code,
+        "material_code": bridge.material_code,
+        "design_type_code": bridge.design_type_code,
+        "inspection_month": bridge.inspection_month,
+        "inspection_year": bridge.inspection_year,
+        "deck_condition_code": bridge.deck_condition_code,
+        "superstructure_condition_code": bridge.superstructure_condition_code,
+        "substructure_condition_code": bridge.substructure_condition_code,
+        "culvert_condition_code": bridge.culvert_condition_code,
+        "overall_condition_code": bridge.overall_condition_code,
+        "lowest_condition_rating": bridge.lowest_condition_rating,
+        "source_row_number": bridge.source_row_number,
+    }
+    values.update(overrides)
+
+    return Bridge(**values)
+
+
 def test_successful_single_record_import(tmp_path: Path) -> None:
     source = tmp_path / "single.csv"
     write_source(source, [BASE_ROW])
@@ -221,6 +270,53 @@ def test_mixed_records_have_exact_counters(tmp_path: Path) -> None:
     assert result.errors_count == 1
     assert table_count(Bridge) == 3
     assert table_count(ImportIssue) == 2
+    assert result.rows_read == result.rows_inserted + result.rows_rejected
+    assert result.warnings_count == issue_count_by_severity("warning")
+    assert result.errors_count == issue_count_by_severity("error")
+
+    with SessionLocal() as session:
+        import_run = session.get_one(ImportRun, result.import_run_id)
+        issues = session.scalars(
+            select(ImportIssue).order_by(
+                ImportIssue.row_number,
+                ImportIssue.error_code,
+            )
+        ).all()
+
+    assert import_run.summary == {
+        "issue_counts_by_code": {
+            "UNKNOWN_OWNER_CODE": 1,
+            "YEAR_BUILT_AFTER_INVENTORY_YEAR": 1,
+        }
+    }
+    assert [
+        (
+            issue.import_run_id,
+            issue.row_number,
+            issue.structure_number,
+            issue.field_name,
+            issue.error_code,
+            issue.severity,
+        )
+        for issue in issues
+    ] == [
+        (
+            result.import_run_id,
+            4,
+            "06 0023",
+            "owner_code",
+            "UNKNOWN_OWNER_CODE",
+            "warning",
+        ),
+        (
+            result.import_run_id,
+            5,
+            "06 0024",
+            "year_built",
+            "YEAR_BUILT_AFTER_INVENTORY_YEAR",
+            "error",
+        ),
+    ]
 
 
 def test_fatal_failure_rolls_back_dataset_and_bridges_but_keeps_run(
@@ -251,6 +347,38 @@ def test_fatal_failure_rolls_back_dataset_and_bridges_but_keeps_run(
     assert issue.error_code == "IMPORT_FAILED"
 
 
+def test_failed_replacement_import_does_not_deactivate_existing_dataset(
+    tmp_path: Path,
+) -> None:
+    first_source = tmp_path / "first.csv"
+    failing_source = tmp_path / "failing.csv"
+    write_source(first_source, [BASE_ROW])
+    write_source(
+        failing_source,
+        [
+            row_with_structure("        06 0021"),
+            row_with_structure("1234567890123456"),
+        ],
+    )
+
+    first_result = import_dataset(make_request(first_source, "9".zfill(64)))
+
+    with pytest.raises(Exception):
+        import_dataset(make_request(failing_source, "10".zfill(64)))
+
+    with SessionLocal() as session:
+        first_dataset = session.get_one(BridgeDataset, first_result.dataset_id)
+        failed_run = session.scalar(
+            select(ImportRun).where(ImportRun.status == "failed")
+        )
+
+    assert first_dataset.is_active is True
+    assert table_count(BridgeDataset) == 1
+    assert table_count(Bridge) == 1
+    assert failed_run.dataset_id is None
+    assert failed_run.failure_message
+
+
 def test_successful_import_switches_active_dataset(tmp_path: Path) -> None:
     first_source = tmp_path / "first.csv"
     second_source = tmp_path / "second.csv"
@@ -271,7 +399,35 @@ def test_successful_import_switches_active_dataset(tmp_path: Path) -> None:
 
     assert first_dataset.is_active is False
     assert second_dataset.is_active is True
+    assert table_count(BridgeDataset) == 2
+    assert table_count(Bridge) == 2
     assert active_count == 1
+
+
+def test_duplicate_source_sha_skips_without_new_dataset_or_bridges(tmp_path: Path) -> None:
+    source = tmp_path / "duplicate.csv"
+    write_source(source, [BASE_ROW])
+
+    first_result = import_dataset(make_request(source, "11".zfill(64)))
+    second_result = import_dataset(make_request(source, "11".zfill(64)))
+
+    assert first_result.status == "completed"
+    assert second_result.status == "skipped_duplicate_file"
+    assert second_result.dataset_id is None
+    assert second_result.rows_read == 0
+    assert second_result.rows_inserted == 0
+    assert table_count(BridgeDataset) == 1
+    assert table_count(Bridge) == 1
+    assert table_count(ImportRun) == 2
+
+    with SessionLocal() as session:
+        second_run = session.get_one(ImportRun, second_result.import_run_id)
+
+    assert second_run.dataset_id is None
+    assert second_run.summary == {
+        "duplicate_dataset_id": first_result.dataset_id,
+        "issue_counts_by_code": {},
+    }
 
 
 def test_representative_sample_imports_successfully() -> None:
@@ -288,3 +444,29 @@ def test_representative_sample_imports_successfully() -> None:
     assert result.errors_count == 0
     assert table_count(Bridge) == 29
     assert table_count(ImportIssue) == 0
+
+
+def test_database_rejects_invalid_bridge_even_if_validation_is_bypassed(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "valid.csv"
+    write_source(source, [BASE_ROW])
+    import_dataset(make_request(source, "12".zfill(64)))
+
+    with pytest.raises(IntegrityError):
+        with SessionLocal.begin() as session:
+            bridge = session.scalar(select(Bridge))
+            bridge.truck_traffic_percent = Decimal("150")
+
+
+def test_database_rejects_duplicate_bridge_identity_within_dataset(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "valid.csv"
+    write_source(source, [BASE_ROW])
+    import_dataset(make_request(source, "13".zfill(64)))
+
+    with pytest.raises(IntegrityError):
+        with SessionLocal.begin() as session:
+            bridge = session.scalar(select(Bridge))
+            session.add(clone_bridge(bridge, source_row_number=99))
