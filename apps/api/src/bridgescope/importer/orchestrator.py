@@ -1,9 +1,10 @@
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from bridgescope.db.models.bridge_dataset import BridgeDataset
 from bridgescope.db.models.import_issue import ImportIssue
@@ -38,6 +39,7 @@ class ImportRequest:
     source_file_name: str
     source_sha256: str
     retrieved_at: datetime
+    state_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,14 @@ class ImportResult:
     rows_rejected: int
     warnings_count: int
     errors_count: int
+    source_file_name: str | None = None
+    source_sha256: str | None = None
+    provider: str | None = None
+    state_code: str | None = None
+    state_name: str | None = None
+    inventory_year: int | None = None
+    issue_counts_by_code: Mapping[str, int] = field(default_factory=dict)
+    failure_message: str | None = None
 
 
 @dataclass
@@ -120,6 +130,16 @@ def execute_import(
 
     with session_factory.begin() as session:
         import_run = session.get_one(ImportRun, import_run_id)
+        existing_dataset = session.scalar(
+            select(BridgeDataset).where(
+                BridgeDataset.source_sha256 == request.source_sha256
+            )
+        )
+
+        if existing_dataset is not None:
+            _finalize_duplicate_import_run(import_run, existing_dataset.id)
+            return _result_from_import_run(import_run, request)
+
         dataset = _create_dataset(request)
         session.add(dataset)
         session.flush()
@@ -171,17 +191,10 @@ def execute_import(
         _activate_dataset(session, dataset)
         _finalize_import_run(import_run, status, counters)
 
-        result = ImportResult(
-            import_run_id=import_run.id,
-            dataset_id=dataset.id,
-            status=status,
-            rows_read=counters.rows_read,
-            rows_inserted=counters.rows_inserted,
-            rows_updated=counters.rows_updated,
-            rows_unchanged=counters.rows_unchanged,
-            rows_rejected=counters.rows_rejected,
-            warnings_count=counters.warnings_count,
-            errors_count=counters.errors_count,
+        result = _result_from_import_run(
+            import_run,
+            request,
+            issue_counts_by_code=counters.issue_counts_by_code,
         )
 
     return result
@@ -284,6 +297,59 @@ def _finalize_import_run(
     import_run.summary = {
         "issue_counts_by_code": dict(sorted(counters.issue_counts_by_code.items()))
     }
+
+
+def _finalize_duplicate_import_run(
+    import_run: ImportRun,
+    existing_dataset_id: int,
+) -> None:
+    import_run.status = "skipped_duplicate_file"
+    import_run.finished_at = _now()
+    import_run.rows_read = 0
+    import_run.rows_inserted = 0
+    import_run.rows_updated = 0
+    import_run.rows_unchanged = 0
+    import_run.rows_rejected = 0
+    import_run.warnings_count = 0
+    import_run.errors_count = 0
+    import_run.summary = {
+        "duplicate_dataset_id": existing_dataset_id,
+        "issue_counts_by_code": {},
+    }
+
+
+def _result_from_import_run(
+    import_run: ImportRun,
+    request: ImportRequest,
+    *,
+    issue_counts_by_code: Mapping[str, int] | None = None,
+) -> ImportResult:
+    if issue_counts_by_code is None:
+        raw_issue_counts = import_run.summary.get("issue_counts_by_code", {})
+        issue_counts_by_code = (
+            raw_issue_counts if isinstance(raw_issue_counts, dict) else {}
+        )
+
+    return ImportResult(
+        import_run_id=import_run.id,
+        dataset_id=import_run.dataset_id,
+        status=import_run.status,
+        rows_read=import_run.rows_read,
+        rows_inserted=import_run.rows_inserted,
+        rows_updated=import_run.rows_updated,
+        rows_unchanged=import_run.rows_unchanged,
+        rows_rejected=import_run.rows_rejected,
+        warnings_count=import_run.warnings_count,
+        errors_count=import_run.errors_count,
+        source_file_name=request.source_file_name,
+        source_sha256=request.source_sha256,
+        provider=request.provider,
+        state_code=request.state_code,
+        state_name=request.state_name,
+        inventory_year=request.inventory_year,
+        issue_counts_by_code=dict(sorted(issue_counts_by_code.items())),
+        failure_message=import_run.failure_message,
+    )
 
 
 def _status_for(counters: _ImportCounters) -> str:
