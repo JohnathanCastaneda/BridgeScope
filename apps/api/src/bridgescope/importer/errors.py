@@ -12,3 +12,7 @@ class InvalidSourceRowError(SourceReaderError):
 
 class EmptySourceFileError(SourceReaderError):
     """Raised when a source file has no header row."""
+
+
+class NormalizationError(Exception):
+    """Raised when a raw source value cannot be normalized."""
