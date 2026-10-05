@@ -336,7 +336,7 @@ This supports bridge-detail lookup.
 
 INDEX (
     dataset_id,
-    average_daily_traffic DESC
+    average_daily_traffic
 )
 
 Supports:
