@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 
 
 @dataclass(frozen=True)
@@ -49,3 +50,33 @@ class NormalizedBridgeRecord:
     overall_condition_code: str | None
 
     lowest_condition_rating: int | None
+
+
+class IssueSeverity(StrEnum):
+    WARNING = "warning"
+    ERROR = "error"
+    FATAL = "fatal"
+
+
+@dataclass(frozen=True)
+class ValidationIssue:
+    severity: IssueSeverity
+    error_code: str
+    field_name: str | None
+    message: str
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    issues: tuple[ValidationIssue, ...]
+
+    @property
+    def has_errors(self) -> bool:
+        return any(
+            issue.severity in {IssueSeverity.ERROR, IssueSeverity.FATAL}
+            for issue in self.issues
+        )
+
+    @property
+    def is_valid(self) -> bool:
+        return not self.has_errors
