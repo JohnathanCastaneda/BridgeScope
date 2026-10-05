@@ -19,6 +19,7 @@ dependencies = [
 dev = [
     "httpx",
     "pytest",
+    "alembic>=1.20,<1.21",
 ]
 
 [tool.setuptools.packages.find]
