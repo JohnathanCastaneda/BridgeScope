@@ -5,6 +5,7 @@ from fastapi.encoders import jsonable_encoder
 
 from bridgescope.api.v1.schemas.bridge import BridgeDetail, BridgeSummary
 from bridgescope.api.v1.schemas.pagination import BridgePage
+from bridgescope.api.v1.schemas.ranking import HighestAdtItem, HighestAdtRanking
 
 
 def test_bridge_summary_serializes_complete_fields() -> None:
@@ -139,4 +140,41 @@ def test_bridge_page_serializes_summary_items() -> None:
     assert result["page_size"] == 25
     assert result["total_items"] == 25975
     assert result["total_pages"] == 1039
+
+
+def test_highest_adt_ranking_serializes_positional_rank_items() -> None:
+    ranking = HighestAdtRanking(
+        items=[
+            HighestAdtItem(
+                rank=1,
+                state_code="06",
+                structure_number="06 0021",
+                facility_carried="I-5",
+                feature_crossed="RIVER",
+                county_code="067",
+                average_daily_traffic=550000,
+                traffic_year=2023,
+            ),
+            HighestAdtItem(
+                rank=2,
+                state_code="06",
+                structure_number="06 0022",
+                facility_carried=None,
+                feature_crossed=None,
+                county_code=None,
+                average_daily_traffic=0,
+                traffic_year=None,
+            ),
+        ],
+        limit=25,
+    )
+
+    result = ranking.model_dump()
+
+    assert result["limit"] == 25
+    assert result["items"][0]["rank"] == 1
+    assert result["items"][0]["average_daily_traffic"] == 550000
+    assert result["items"][0]["traffic_year"] == 2023
+    assert result["items"][1]["average_daily_traffic"] == 0
+    assert result["items"][1]["traffic_year"] is None
 

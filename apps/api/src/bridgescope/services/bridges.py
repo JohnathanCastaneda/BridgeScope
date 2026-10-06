@@ -93,6 +93,28 @@ def get_bridge_by_identity(
     return session.scalars(statement).one_or_none()
 
 
+def get_highest_adt_bridges(
+    session: Session,
+    *,
+    dataset_id: int,
+    limit: int,
+) -> list[Bridge]:
+    statement = (
+        select(Bridge)
+        .where(
+            Bridge.dataset_id == dataset_id,
+            Bridge.average_daily_traffic.is_not(None),
+        )
+        .order_by(
+            Bridge.average_daily_traffic.desc(),
+            Bridge.structure_number.asc(),
+        )
+        .limit(limit)
+    )
+
+    return list(session.scalars(statement))
+
+
 def count_bridges_for_dataset(
     session: Session,
     *,

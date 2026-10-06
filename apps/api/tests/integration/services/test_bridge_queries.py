@@ -12,6 +12,7 @@ from bridgescope.services.bridges import (
     get_active_bridges,
     get_active_dataset,
     get_bridges_for_dataset,
+    get_highest_adt_bridges,
     require_active_dataset,
 )
 from bridgescope.services.errors import ActiveDatasetNotFoundError
@@ -61,6 +62,7 @@ def create_bridge(
     state_code: str = "06",
     structure_number: str,
     source_row_number: int,
+    average_daily_traffic: int | None = 1000,
 ) -> Bridge:
     return Bridge(
         dataset_id=dataset_id,
@@ -68,7 +70,7 @@ def create_bridge(
         structure_number=structure_number,
         county_code="089",
         year_built=1985,
-        average_daily_traffic=1000,
+        average_daily_traffic=average_daily_traffic,
         source_row_number=source_row_number,
     )
 
@@ -314,4 +316,139 @@ def test_active_bridge_helpers_scope_to_active_dataset() -> None:
         "06 0022",
     ]
     assert count == 2
+
+
+def test_get_highest_adt_bridges_orders_descending_with_positional_ties() -> None:
+    with SessionLocal.begin() as session:
+        dataset = create_dataset(source_sha256="14".zfill(64), is_active=True)
+        session.add(dataset)
+        session.flush()
+        session.add_all(
+            [
+                create_bridge(
+                    dataset_id=dataset.id,
+                    structure_number="02",
+                    source_row_number=2,
+                    average_daily_traffic=500,
+                ),
+                create_bridge(
+                    dataset_id=dataset.id,
+                    structure_number="01",
+                    source_row_number=3,
+                    average_daily_traffic=500,
+                ),
+                create_bridge(
+                    dataset_id=dataset.id,
+                    structure_number="03",
+                    source_row_number=4,
+                    average_daily_traffic=300,
+                ),
+                create_bridge(
+                    dataset_id=dataset.id,
+                    structure_number="04",
+                    source_row_number=5,
+                    average_daily_traffic=100,
+                ),
+            ]
+        )
+
+    with SessionLocal() as session:
+        bridges = get_highest_adt_bridges(
+            session,
+            dataset_id=dataset.id,
+            limit=10,
+        )
+
+    assert [
+        (bridge.structure_number, bridge.average_daily_traffic)
+        for bridge in bridges
+    ] == [
+        ("01", 500),
+        ("02", 500),
+        ("03", 300),
+        ("04", 100),
+    ]
+
+
+def test_get_highest_adt_bridges_excludes_null_adt_and_keeps_zero() -> None:
+    with SessionLocal.begin() as session:
+        dataset = create_dataset(source_sha256="15".zfill(64), is_active=True)
+        session.add(dataset)
+        session.flush()
+        session.add_all(
+            [
+                create_bridge(
+                    dataset_id=dataset.id,
+                    structure_number="A",
+                    source_row_number=2,
+                    average_daily_traffic=50,
+                ),
+                create_bridge(
+                    dataset_id=dataset.id,
+                    structure_number="B",
+                    source_row_number=3,
+                    average_daily_traffic=0,
+                ),
+                create_bridge(
+                    dataset_id=dataset.id,
+                    structure_number="C",
+                    source_row_number=4,
+                    average_daily_traffic=None,
+                ),
+            ]
+        )
+
+    with SessionLocal() as session:
+        bridges = get_highest_adt_bridges(
+            session,
+            dataset_id=dataset.id,
+            limit=10,
+        )
+
+    assert [
+        (bridge.structure_number, bridge.average_daily_traffic)
+        for bridge in bridges
+    ] == [
+        ("A", 50),
+        ("B", 0),
+    ]
+
+
+def test_get_highest_adt_bridges_isolates_dataset_rows_and_honors_limit() -> None:
+    with SessionLocal.begin() as session:
+        inactive = create_dataset(source_sha256="16".zfill(64), is_active=False)
+        active = create_dataset(source_sha256="17".zfill(64), is_active=True)
+        session.add_all([inactive, active])
+        session.flush()
+        session.add_all(
+            [
+                create_bridge(
+                    dataset_id=inactive.id,
+                    structure_number="OLD",
+                    source_row_number=2,
+                    average_daily_traffic=900000,
+                ),
+                create_bridge(
+                    dataset_id=active.id,
+                    structure_number="CURRENT 1",
+                    source_row_number=3,
+                    average_daily_traffic=500000,
+                ),
+                create_bridge(
+                    dataset_id=active.id,
+                    structure_number="CURRENT 2",
+                    source_row_number=4,
+                    average_daily_traffic=400000,
+                ),
+            ]
+        )
+
+    with SessionLocal() as session:
+        bridges = get_highest_adt_bridges(
+            session,
+            dataset_id=active.id,
+            limit=1,
+        )
+
+    assert [bridge.structure_number for bridge in bridges] == ["CURRENT 1"]
 
