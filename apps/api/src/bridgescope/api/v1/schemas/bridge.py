@@ -30,6 +30,7 @@ class BridgeDetail(BaseModel):
 
     state_code: str
     structure_number: str
+    inventory_year: int
 
     facility_carried: str | None
     feature_crossed: str | None

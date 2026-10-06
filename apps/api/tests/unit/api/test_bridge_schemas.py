@@ -70,6 +70,7 @@ def test_bridge_detail_supports_decimal_values_and_source_codes() -> None:
     bridge = BridgeDetail(
         state_code="06",
         structure_number="06 0021",
+        inventory_year=2025,
         facility_carried="Interstate 5 & RR",
         feature_crossed="Shasta Lake",
         county_code="089",
@@ -100,6 +101,7 @@ def test_bridge_detail_supports_decimal_values_and_source_codes() -> None:
     encoded = jsonable_encoder(bridge)
 
     assert dumped["latitude"] == Decimal("40.761664")
+    assert dumped["inventory_year"] == 2025
     assert dumped["culvert_condition_code"] == "N"
     assert dumped["overall_condition_code"] == "P"
     assert encoded["latitude"] == 40.761664

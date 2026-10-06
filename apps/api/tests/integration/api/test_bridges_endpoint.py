@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -60,6 +61,23 @@ def create_bridge(
     average_daily_traffic: int | None = 18400,
     traffic_year: int | None = 2023,
     overall_condition_code: str | None = "G",
+    latitude: Decimal | None = None,
+    longitude: Decimal | None = None,
+    year_reconstructed: int | None = None,
+    truck_traffic_percent: Decimal | None = None,
+    lanes_on: int | None = None,
+    bridge_length_m: Decimal | None = None,
+    maximum_span_m: Decimal | None = None,
+    owner_code: str | None = None,
+    material_code: str | None = None,
+    design_type_code: str | None = None,
+    inspection_month: int | None = None,
+    inspection_year: int | None = None,
+    deck_condition_code: str | None = None,
+    superstructure_condition_code: str | None = None,
+    substructure_condition_code: str | None = None,
+    culvert_condition_code: str | None = None,
+    lowest_condition_rating: int | None = None,
 ) -> Bridge:
     return Bridge(
         dataset_id=dataset_id,
@@ -68,10 +86,27 @@ def create_bridge(
         county_code=county_code,
         facility_carried=facility_carried,
         feature_crossed=feature_crossed,
+        latitude=latitude,
+        longitude=longitude,
         year_built=year_built,
+        year_reconstructed=year_reconstructed,
         average_daily_traffic=average_daily_traffic,
         traffic_year=traffic_year,
+        truck_traffic_percent=truck_traffic_percent,
+        lanes_on=lanes_on,
+        bridge_length_m=bridge_length_m,
+        maximum_span_m=maximum_span_m,
+        owner_code=owner_code,
+        material_code=material_code,
+        design_type_code=design_type_code,
+        inspection_month=inspection_month,
+        inspection_year=inspection_year,
+        deck_condition_code=deck_condition_code,
+        superstructure_condition_code=superstructure_condition_code,
+        substructure_condition_code=substructure_condition_code,
+        culvert_condition_code=culvert_condition_code,
         overall_condition_code=overall_condition_code,
+        lowest_condition_rating=lowest_condition_rating,
         source_row_number=source_row_number,
     )
 
@@ -589,4 +624,244 @@ def test_list_bridges_does_not_expose_internal_database_fields() -> None:
     assert "source_longitude_code" not in item
     assert "created_at" not in item
     assert "updated_at" not in item
+
+
+def test_get_bridge_detail_returns_full_active_bridge() -> None:
+    seed_active_dataset(
+        [
+            create_bridge(
+                dataset_id=0,
+                structure_number="06 0021",
+                source_row_number=2,
+                facility_carried="Interstate 5 & RR",
+                feature_crossed="Shasta Lake",
+                county_code="089",
+                latitude=Decimal("40.761664"),
+                longitude=Decimal("-122.318611"),
+                year_built=1941,
+                year_reconstructed=2008,
+                average_daily_traffic=19500,
+                traffic_year=2009,
+                truck_traffic_percent=Decimal("29"),
+                lanes_on=4,
+                bridge_length_m=Decimal("1093.6"),
+                maximum_span_m=Decimal("192"),
+                owner_code="69",
+                material_code="3",
+                design_type_code="09",
+                inspection_month=6,
+                inspection_year=2023,
+                deck_condition_code="5",
+                superstructure_condition_code="7",
+                substructure_condition_code="7",
+                culvert_condition_code="N",
+                overall_condition_code="F",
+                lowest_condition_rating=5,
+            )
+        ]
+    )
+
+    response = client.get("/api/v1/bridges/06/06%200021")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "state_code": "06",
+        "structure_number": "06 0021",
+        "inventory_year": 2025,
+        "facility_carried": "Interstate 5 & RR",
+        "feature_crossed": "Shasta Lake",
+        "county_code": "089",
+        "latitude": 40.761664,
+        "longitude": -122.318611,
+        "year_built": 1941,
+        "year_reconstructed": 2008,
+        "average_daily_traffic": 19500,
+        "traffic_year": 2009,
+        "truck_traffic_percent": 29.0,
+        "lanes_on": 4,
+        "bridge_length_m": 1093.6,
+        "maximum_span_m": 192.0,
+        "owner_code": "69",
+        "material_code": "3",
+        "design_type_code": "09",
+        "inspection_month": 6,
+        "inspection_year": 2023,
+        "deck_condition_code": "5",
+        "superstructure_condition_code": "7",
+        "substructure_condition_code": "7",
+        "culvert_condition_code": "N",
+        "overall_condition_code": "F",
+        "lowest_condition_rating": 5,
+    }
+
+
+def test_get_bridge_detail_preserves_internal_spaces_and_leading_zeros() -> None:
+    seed_active_dataset(
+        [
+            create_bridge(
+                dataset_id=0,
+                structure_number="01 0002",
+                source_row_number=2,
+            ),
+            create_bridge(
+                dataset_id=0,
+                structure_number="00000000000J003",
+                source_row_number=3,
+            ),
+        ]
+    )
+
+    spaced_response = client.get("/api/v1/bridges/06/01%200002")
+    zero_response = client.get("/api/v1/bridges/06/00000000000J003")
+
+    assert spaced_response.status_code == 200
+    assert spaced_response.json()["structure_number"] == "01 0002"
+    assert zero_response.status_code == 200
+    assert zero_response.json()["structure_number"] == "00000000000J003"
+
+
+def test_get_bridge_detail_trims_outer_structure_number_whitespace() -> None:
+    seed_active_dataset(
+        [create_bridge(dataset_id=0, structure_number="01 0002", source_row_number=2)]
+    )
+
+    response = client.get("/api/v1/bridges/06/%2001%200002%20")
+
+    assert response.status_code == 200
+    assert response.json()["structure_number"] == "01 0002"
+
+
+def test_get_bridge_detail_returns_404_for_missing_or_wrong_state_identity() -> None:
+    seed_active_dataset(
+        [create_bridge(dataset_id=0, structure_number="06 0021", source_row_number=2)]
+    )
+
+    missing_response = client.get("/api/v1/bridges/06/DOESNOTEXIST")
+    wrong_state_response = client.get("/api/v1/bridges/12/06%200021")
+
+    assert missing_response.status_code == 404
+    assert missing_response.json() == {"detail": "Bridge not found."}
+    assert wrong_state_response.status_code == 404
+    assert wrong_state_response.json() == {"detail": "Bridge not found."}
+
+
+def test_get_bridge_detail_returns_503_when_no_active_dataset_exists() -> None:
+    with SessionLocal.begin() as session:
+        session.add(create_dataset(source_sha256="5".zfill(64), is_active=False))
+
+    response = client.get("/api/v1/bridges/06/06%200021")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "No active dataset exists for state 06.",
+    }
+
+
+def test_get_bridge_detail_uses_active_revision_for_same_identity() -> None:
+    with SessionLocal.begin() as session:
+        inactive = create_dataset(source_sha256="6".zfill(64), is_active=False)
+        active = create_dataset(source_sha256="7".zfill(64), is_active=True)
+        session.add_all([inactive, active])
+        session.flush()
+        session.add_all(
+            [
+                create_bridge(
+                    dataset_id=inactive.id,
+                    structure_number="06 0021",
+                    source_row_number=2,
+                    average_daily_traffic=10000,
+                ),
+                create_bridge(
+                    dataset_id=active.id,
+                    structure_number="06 0021",
+                    source_row_number=3,
+                    average_daily_traffic=50000,
+                    traffic_year=2017,
+                ),
+            ]
+        )
+
+    response = client.get("/api/v1/bridges/06/06%200021")
+
+    assert response.status_code == 200
+    assert response.json()["average_daily_traffic"] == 50000
+    assert response.json()["traffic_year"] == 2017
+
+
+def test_get_bridge_detail_does_not_return_inactive_only_bridge() -> None:
+    with SessionLocal.begin() as session:
+        inactive = create_dataset(source_sha256="8".zfill(64), is_active=False)
+        active = create_dataset(source_sha256="9".zfill(64), is_active=True)
+        session.add_all([inactive, active])
+        session.flush()
+        session.add_all(
+            [
+                create_bridge(
+                    dataset_id=inactive.id,
+                    structure_number="OLD 0001",
+                    source_row_number=2,
+                ),
+                create_bridge(
+                    dataset_id=active.id,
+                    structure_number="CURRENT",
+                    source_row_number=3,
+                ),
+            ]
+        )
+
+    inactive_response = client.get("/api/v1/bridges/06/OLD%200001")
+    active_response = client.get("/api/v1/bridges/06/CURRENT")
+
+    assert inactive_response.status_code == 404
+    assert active_response.status_code == 200
+    assert active_response.json()["structure_number"] == "CURRENT"
+
+
+def test_get_bridge_detail_preserves_nulls_n_codes_and_time_context() -> None:
+    seed_active_dataset(
+        [
+            create_bridge(
+                dataset_id=0,
+                structure_number="06 0021",
+                source_row_number=2,
+                year_reconstructed=None,
+                traffic_year=None,
+                truck_traffic_percent=None,
+                culvert_condition_code="N",
+                inspection_month=5,
+                inspection_year=2024,
+            )
+        ]
+    )
+
+    response = client.get("/api/v1/bridges/06/06%200021")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["inventory_year"] == 2025
+    assert payload["traffic_year"] is None
+    assert payload["year_reconstructed"] is None
+    assert payload["truck_traffic_percent"] is None
+    assert payload["culvert_condition_code"] == "N"
+    assert payload["inspection_month"] == 5
+    assert payload["inspection_year"] == 2024
+    assert "inspection_date" not in payload
+
+
+def test_get_bridge_detail_does_not_expose_internal_database_fields() -> None:
+    seed_active_dataset(
+        [create_bridge(dataset_id=0, structure_number="06 0021", source_row_number=2)]
+    )
+
+    response = client.get("/api/v1/bridges/06/06%200021")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "id" not in payload
+    assert "dataset_id" not in payload
+    assert "source_row_number" not in payload
+    assert "source_latitude_code" not in payload
+    assert "source_longitude_code" not in payload
+    assert "created_at" not in payload
+    assert "updated_at" not in payload
 

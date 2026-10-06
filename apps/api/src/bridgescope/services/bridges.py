@@ -77,6 +77,22 @@ def get_bridges_for_dataset(
     return list(session.scalars(statement))
 
 
+def get_bridge_by_identity(
+    session: Session,
+    *,
+    dataset_id: int,
+    state_code: str,
+    structure_number: str,
+) -> Bridge | None:
+    statement = select(Bridge).where(
+        Bridge.dataset_id == dataset_id,
+        Bridge.state_code == state_code,
+        Bridge.structure_number == structure_number,
+    )
+
+    return session.scalars(statement).one_or_none()
+
+
 def count_bridges_for_dataset(
     session: Session,
     *,
