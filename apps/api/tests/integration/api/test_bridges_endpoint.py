@@ -11,6 +11,22 @@ from bridgescope.main import app
 
 client = TestClient(app)
 
+ACTIVE_DATASET_ERROR = {
+    "error": {
+        "code": "ACTIVE_DATASET_NOT_FOUND",
+        "message": "Bridge data is currently unavailable.",
+        "details": None,
+    }
+}
+
+BRIDGE_NOT_FOUND_ERROR = {
+    "error": {
+        "code": "BRIDGE_NOT_FOUND",
+        "message": "Bridge not found.",
+        "details": None,
+    }
+}
+
 
 @pytest.fixture(autouse=True)
 def clean_import_tables() -> None:
@@ -542,6 +558,49 @@ def test_list_bridges_rejects_invalid_pagination(query: str) -> None:
     response = client.get(f"/api/v1/bridges?{query}")
 
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert response.json()["error"]["message"] == "Request validation failed."
+
+
+def test_list_bridges_pagination_validation_uses_error_details() -> None:
+    response = client.get("/api/v1/bridges?page=0")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert any(
+        detail["field"] == "query.page"
+        for detail in response.json()["error"]["details"]
+    )
+
+
+def test_list_bridges_invalid_sort_uses_validation_error_envelope() -> None:
+    response = client.get("/api/v1/bridges?sort=banana")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert any(
+        detail["field"] == "query.sort"
+        for detail in response.json()["error"]["details"]
+    )
+
+
+def test_list_bridges_inverted_range_uses_validation_error_envelope() -> None:
+    response = client.get("/api/v1/bridges?adt_min=100000&adt_max=50000")
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {
+            "code": "VALIDATION_ERROR",
+            "message": "Request validation failed.",
+            "details": [
+                {
+                    "field": "query.adt_min",
+                    "message": "adt_min cannot be greater than adt_max.",
+                    "type": "value_error.range",
+                }
+            ],
+        }
+    }
 
 
 def test_list_bridges_accepts_max_page_size() -> None:
@@ -593,9 +652,7 @@ def test_list_bridges_returns_503_when_no_active_dataset_exists() -> None:
     response = client.get("/api/v1/bridges")
 
     assert response.status_code == 503
-    assert response.json() == {
-        "detail": "No active dataset exists for state 06.",
-    }
+    assert response.json() == ACTIVE_DATASET_ERROR
 
 
 def test_list_bridges_does_not_expose_internal_database_fields() -> None:
@@ -740,9 +797,9 @@ def test_get_bridge_detail_returns_404_for_missing_or_wrong_state_identity() -> 
     wrong_state_response = client.get("/api/v1/bridges/12/06%200021")
 
     assert missing_response.status_code == 404
-    assert missing_response.json() == {"detail": "Bridge not found."}
+    assert missing_response.json() == BRIDGE_NOT_FOUND_ERROR
     assert wrong_state_response.status_code == 404
-    assert wrong_state_response.json() == {"detail": "Bridge not found."}
+    assert wrong_state_response.json() == BRIDGE_NOT_FOUND_ERROR
 
 
 def test_get_bridge_detail_returns_503_when_no_active_dataset_exists() -> None:
@@ -752,9 +809,7 @@ def test_get_bridge_detail_returns_503_when_no_active_dataset_exists() -> None:
     response = client.get("/api/v1/bridges/06/06%200021")
 
     assert response.status_code == 503
-    assert response.json() == {
-        "detail": "No active dataset exists for state 06.",
-    }
+    assert response.json() == ACTIVE_DATASET_ERROR
 
 
 def test_get_bridge_detail_uses_active_revision_for_same_identity() -> None:
@@ -864,4 +919,32 @@ def test_get_bridge_detail_does_not_expose_internal_database_fields() -> None:
     assert "source_longitude_code" not in payload
     assert "created_at" not in payload
     assert "updated_at" not in payload
+
+
+def test_unexpected_api_error_returns_safe_error_envelope(monkeypatch) -> None:
+    safe_client = TestClient(app, raise_server_exceptions=False)
+    seed_active_dataset(
+        [create_bridge(dataset_id=0, structure_number="06 0021", source_row_number=2)]
+    )
+
+    def fail_count(*args, **kwargs):
+        raise RuntimeError("postgres password=SECRET")
+
+    monkeypatch.setattr(
+        "bridgescope.api.v1.routes.bridges.count_bridges_for_dataset",
+        fail_count,
+    )
+
+    response = safe_client.get("/api/v1/bridges")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "INTERNAL_SERVER_ERROR",
+            "message": "An unexpected server error occurred.",
+            "details": None,
+        }
+    }
+    assert "SECRET" not in response.text
+    assert "RuntimeError" not in response.text
 

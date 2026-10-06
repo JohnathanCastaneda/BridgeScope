@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from fastapi.encoders import jsonable_encoder
 
+from bridgescope.api.errors import ApiErrorBody, ApiErrorResponse, ErrorDetail
 from bridgescope.api.v1.schemas.bridge import BridgeDetail, BridgeSummary
 from bridgescope.api.v1.schemas.pagination import BridgePage
 from bridgescope.api.v1.schemas.ranking import HighestAdtItem, HighestAdtRanking
@@ -177,4 +178,34 @@ def test_highest_adt_ranking_serializes_positional_rank_items() -> None:
     assert result["items"][0]["traffic_year"] == 2023
     assert result["items"][1]["average_daily_traffic"] == 0
     assert result["items"][1]["traffic_year"] is None
+
+
+def test_api_error_response_serializes_stable_error_contract() -> None:
+    response = ApiErrorResponse(
+        error=ApiErrorBody(
+            code="VALIDATION_ERROR",
+            message="Request validation failed.",
+            details=[
+                ErrorDetail(
+                    field="query.page",
+                    message="Input should be greater than or equal to 1",
+                    type="greater_than_equal",
+                )
+            ],
+        )
+    )
+
+    assert response.model_dump() == {
+        "error": {
+            "code": "VALIDATION_ERROR",
+            "message": "Request validation failed.",
+            "details": [
+                {
+                    "field": "query.page",
+                    "message": "Input should be greater than or equal to 1",
+                    "type": "greater_than_equal",
+                }
+            ],
+        }
+    }
 

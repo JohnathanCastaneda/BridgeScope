@@ -10,6 +10,14 @@ from bridgescope.main import app
 
 client = TestClient(app)
 
+ACTIVE_DATASET_ERROR = {
+    "error": {
+        "code": "ACTIVE_DATASET_NOT_FOUND",
+        "message": "Bridge data is currently unavailable.",
+        "details": None,
+    }
+}
+
 
 @pytest.fixture(autouse=True)
 def clean_import_tables() -> None:
@@ -189,6 +197,18 @@ def test_highest_adt_ranking_rejects_invalid_limit(query: str) -> None:
     response = client.get(f"/api/v1/rankings/highest-adt?{query}")
 
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_highest_adt_ranking_limit_validation_uses_error_details() -> None:
+    response = client.get("/api/v1/rankings/highest-adt?limit=101")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert any(
+        detail["field"] == "query.limit"
+        for detail in response.json()["error"]["details"]
+    )
 
 
 def test_highest_adt_ranking_accepts_max_limit() -> None:
@@ -347,9 +367,7 @@ def test_highest_adt_ranking_returns_503_when_no_active_dataset_exists() -> None
     response = client.get("/api/v1/rankings/highest-adt")
 
     assert response.status_code == 503
-    assert response.json() == {
-        "detail": "No active dataset exists for state 06.",
-    }
+    assert response.json() == ACTIVE_DATASET_ERROR
 
 
 def test_highest_adt_ranking_returns_empty_items_for_no_rankable_bridges() -> None:
