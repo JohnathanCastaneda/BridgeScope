@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from bridgescope.api.error_handlers import register_exception_handlers
 from bridgescope.api.router import api_router
 
 app = FastAPI(
@@ -7,6 +8,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
+register_exception_handlers(app)
 app.include_router(api_router)
 
 

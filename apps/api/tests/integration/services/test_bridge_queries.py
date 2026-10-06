@@ -14,8 +14,9 @@ from bridgescope.services.bridges import (
     get_bridges_for_dataset,
     get_highest_adt_bridges,
     require_active_dataset,
+    require_bridge_by_identity,
 )
-from bridgescope.services.errors import ActiveDatasetNotFoundError
+from bridgescope.services.errors import ActiveDatasetNotFoundError, BridgeNotFoundError
 
 
 @pytest.fixture(autouse=True)
@@ -281,10 +282,50 @@ def test_count_bridges_for_dataset_is_scoped_to_dataset() -> None:
         assert count_bridges_for_dataset(session, dataset_id=dataset_b.id) == 2
 
 
+def test_require_bridge_by_identity_returns_dataset_scoped_bridge() -> None:
+    with SessionLocal.begin() as session:
+        dataset = create_dataset(source_sha256="12".zfill(64), is_active=True)
+        session.add(dataset)
+        session.flush()
+        session.add(
+            create_bridge(
+                dataset_id=dataset.id,
+                structure_number="06 0021",
+                source_row_number=2,
+            )
+        )
+
+    with SessionLocal() as session:
+        bridge = require_bridge_by_identity(
+            session,
+            dataset_id=dataset.id,
+            state_code="06",
+            structure_number="06 0021",
+        )
+
+    assert bridge.structure_number == "06 0021"
+
+
+def test_require_bridge_by_identity_raises_when_missing() -> None:
+    with SessionLocal.begin() as session:
+        dataset = create_dataset(source_sha256="13".zfill(64), is_active=True)
+        session.add(dataset)
+        session.flush()
+
+    with SessionLocal() as session:
+        with pytest.raises(BridgeNotFoundError, match="Bridge not found."):
+            require_bridge_by_identity(
+                session,
+                dataset_id=dataset.id,
+                state_code="06",
+                structure_number="MISSING",
+            )
+
+
 def test_active_bridge_helpers_scope_to_active_dataset() -> None:
     with SessionLocal.begin() as session:
-        inactive = create_dataset(source_sha256="12".zfill(64), is_active=False)
-        active = create_dataset(source_sha256="13".zfill(64), is_active=True)
+        inactive = create_dataset(source_sha256="14".zfill(64), is_active=False)
+        active = create_dataset(source_sha256="15".zfill(64), is_active=True)
         session.add_all([inactive, active])
         session.flush()
         session.add_all(
@@ -320,7 +361,7 @@ def test_active_bridge_helpers_scope_to_active_dataset() -> None:
 
 def test_get_highest_adt_bridges_orders_descending_with_positional_ties() -> None:
     with SessionLocal.begin() as session:
-        dataset = create_dataset(source_sha256="14".zfill(64), is_active=True)
+        dataset = create_dataset(source_sha256="16".zfill(64), is_active=True)
         session.add(dataset)
         session.flush()
         session.add_all(
@@ -372,7 +413,7 @@ def test_get_highest_adt_bridges_orders_descending_with_positional_ties() -> Non
 
 def test_get_highest_adt_bridges_excludes_null_adt_and_keeps_zero() -> None:
     with SessionLocal.begin() as session:
-        dataset = create_dataset(source_sha256="15".zfill(64), is_active=True)
+        dataset = create_dataset(source_sha256="17".zfill(64), is_active=True)
         session.add(dataset)
         session.flush()
         session.add_all(
@@ -416,8 +457,8 @@ def test_get_highest_adt_bridges_excludes_null_adt_and_keeps_zero() -> None:
 
 def test_get_highest_adt_bridges_isolates_dataset_rows_and_honors_limit() -> None:
     with SessionLocal.begin() as session:
-        inactive = create_dataset(source_sha256="16".zfill(64), is_active=False)
-        active = create_dataset(source_sha256="17".zfill(64), is_active=True)
+        inactive = create_dataset(source_sha256="18".zfill(64), is_active=False)
+        active = create_dataset(source_sha256="19".zfill(64), is_active=True)
         session.add_all([inactive, active])
         session.flush()
         session.add_all(

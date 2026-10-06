@@ -5,7 +5,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from bridgescope.db.models import Bridge, BridgeDataset
-from bridgescope.services.errors import ActiveDatasetNotFoundError
+from bridgescope.services.errors import ActiveDatasetNotFoundError, BridgeNotFoundError
 
 
 class BridgeSort(StrEnum):
@@ -91,6 +91,26 @@ def get_bridge_by_identity(
     )
 
     return session.scalars(statement).one_or_none()
+
+
+def require_bridge_by_identity(
+    session: Session,
+    *,
+    dataset_id: int,
+    state_code: str,
+    structure_number: str,
+) -> Bridge:
+    bridge = get_bridge_by_identity(
+        session,
+        dataset_id=dataset_id,
+        state_code=state_code,
+        structure_number=structure_number,
+    )
+
+    if bridge is None:
+        raise BridgeNotFoundError("Bridge not found.")
+
+    return bridge
 
 
 def get_highest_adt_bridges(
