@@ -1,20 +1,20 @@
 from enum import StrEnum
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, Path, Query
 
 from bridgescope.api.dependencies import DbSession
+from bridgescope.api.errors import ApiErrorResponse, ApiValidationError, ErrorDetail
 from bridgescope.api.v1.schemas.bridge import BridgeDetail
 from bridgescope.api.v1.schemas.pagination import BridgePage
 from bridgescope.services.bridges import (
     BridgeQuery,
     BridgeSort,
     count_bridges_for_dataset,
-    get_bridge_by_identity,
     get_bridges_for_dataset,
     require_active_dataset,
+    require_bridge_by_identity,
 )
-from bridgescope.services.errors import ActiveDatasetNotFoundError
 
 router = APIRouter()
 
@@ -28,6 +28,16 @@ class OverallConditionFilter(StrEnum):
 @router.get(
     "",
     response_model=BridgePage,
+    responses={
+        422: {
+            "model": ApiErrorResponse,
+            "description": "Request validation failed",
+        },
+        503: {
+            "model": ApiErrorResponse,
+            "description": "No active bridge dataset",
+        },
+    },
 )
 def list_bridges(
     session: DbSession,
@@ -49,10 +59,7 @@ def list_bridges(
         adt_max=adt_max,
     )
 
-    try:
-        dataset = require_active_dataset(session)
-    except ActiveDatasetNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    dataset = require_active_dataset(session)
 
     bridge_query = BridgeQuery(
         q=q,
@@ -91,26 +98,34 @@ def list_bridges(
 @router.get(
     "/{state_code}/{structure_number}",
     response_model=BridgeDetail,
+    responses={
+        404: {
+            "model": ApiErrorResponse,
+            "description": "Bridge not found",
+        },
+        422: {
+            "model": ApiErrorResponse,
+            "description": "Request validation failed",
+        },
+        503: {
+            "model": ApiErrorResponse,
+            "description": "No active bridge dataset",
+        },
+    },
 )
 def get_bridge_detail(
     state_code: Annotated[str, Path(pattern=r"^\d{2}$")],
     structure_number: str,
     session: DbSession,
 ) -> BridgeDetail:
-    try:
-        dataset = require_active_dataset(session)
-    except ActiveDatasetNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    dataset = require_active_dataset(session)
 
-    bridge = get_bridge_by_identity(
+    bridge = require_bridge_by_identity(
         session,
         dataset_id=dataset.id,
         state_code=state_code,
         structure_number=structure_number.strip(),
     )
-
-    if bridge is None:
-        raise HTTPException(status_code=404, detail="Bridge not found.")
 
     return _bridge_detail_response(
         bridge,
@@ -130,15 +145,25 @@ def _validate_ranges(
         and year_built_max is not None
         and year_built_min > year_built_max
     ):
-        raise HTTPException(
-            status_code=422,
-            detail="year_built_min cannot be greater than year_built_max.",
+        raise ApiValidationError(
+            [
+                ErrorDetail(
+                    field="query.year_built_min",
+                    message="year_built_min cannot be greater than year_built_max.",
+                    type="value_error.range",
+                )
+            ]
         )
 
     if adt_min is not None and adt_max is not None and adt_min > adt_max:
-        raise HTTPException(
-            status_code=422,
-            detail="adt_min cannot be greater than adt_max.",
+        raise ApiValidationError(
+            [
+                ErrorDetail(
+                    field="query.adt_min",
+                    message="adt_min cannot be greater than adt_max.",
+                    type="value_error.range",
+                )
+            ]
         )
 
 

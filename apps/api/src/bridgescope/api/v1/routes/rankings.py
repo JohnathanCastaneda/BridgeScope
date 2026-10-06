@@ -1,11 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from bridgescope.api.dependencies import DbSession
+from bridgescope.api.errors import ApiErrorResponse
 from bridgescope.api.v1.schemas.ranking import HighestAdtItem, HighestAdtRanking
 from bridgescope.services.bridges import get_highest_adt_bridges, require_active_dataset
-from bridgescope.services.errors import ActiveDatasetNotFoundError
 
 router = APIRouter()
 
@@ -19,15 +19,22 @@ router = APIRouter()
         "Average Daily Traffic. ADT is not live traffic, so each item includes "
         "the traffic measurement year when available."
     ),
+    responses={
+        422: {
+            "model": ApiErrorResponse,
+            "description": "Request validation failed",
+        },
+        503: {
+            "model": ApiErrorResponse,
+            "description": "No active bridge dataset",
+        },
+    },
 )
 def highest_adt_ranking(
     session: DbSession,
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> HighestAdtRanking:
-    try:
-        dataset = require_active_dataset(session)
-    except ActiveDatasetNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    dataset = require_active_dataset(session)
 
     bridges = get_highest_adt_bridges(
         session,
